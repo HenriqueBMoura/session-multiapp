@@ -1,0 +1,83 @@
+# Ultra-secure Dockerfile using only scratch and distroless images
+# This eliminates virtually all vulnerabilities from base images
+
+# Build stage for .NET (minimal dependencies)
+FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS dotnet-build
+WORKDIR /src
+COPY backend-dotnet/*.csproj ./
+RUN dotnet restore --locked-mode
+COPY backend-dotnet/ ./
+RUN dotnet publish -c Release -o /app \
+    --self-contained true \
+    --runtime linux-x64 \
+    /p:PublishTrimmed=true \
+    /p:PublishSingleFile=true \
+    /p:IncludeNativeLibrariesForSelfExtract=true
+
+# Build stage for frontend (static files only)
+FROM node:20-alpine AS frontend-build
+WORKDIR /build
+
+# Install pnpm and build tools
+RUN npm install -g pnpm@9.12.0
+
+# Next.js
+COPY frontend-nextjs/package*.json frontend-nextjs/pnpm-lock.yaml ./nextjs/
+WORKDIR /build/nextjs
+RUN pnpm install --frozen-lockfile
+COPY frontend-nextjs/ ./
+RUN pnpm build
+
+# Angular 1
+WORKDIR /build/angular1
+COPY frontend-angular1/package*.json frontend-angular1/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY frontend-angular1/ ./
+RUN pnpm ng build --configuration production
+
+# Angular 2  
+WORKDIR /build/angular2
+COPY frontend-angular2/package*.json frontend-angular2/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY frontend-angular2/ ./
+RUN pnpm ng build --configuration production
+
+# FINAL SECURE RUNTIME STAGES
+
+# Backend - Pure distroless (no shell, no package manager, minimal everything)
+FROM gcr.io/distroless/base-debian12:nonroot AS backend
+
+# Copy only the self-contained executable
+COPY --from=dotnet-build --chown=nonroot:nonroot /app/Backend /app/Backend
+
+WORKDIR /app
+EXPOSE 5000
+USER nonroot
+
+# Distroless has no shell, so only exec form works
+ENTRYPOINT ["/app/Backend", "--urls", "http://0.0.0.0:5000"]
+
+# Frontend - Static file server from scratch
+FROM scratch AS frontend
+
+# Copy static files
+COPY --from=frontend-build /build/nextjs/out /var/www/html/
+COPY --from=frontend-build /build/angular1/dist/frontend-angular1/ /var/www/html/user/
+COPY --from=frontend-build /build/angular2/dist/frontend-angular2/ /var/www/html/admin/
+
+# Copy a minimal static file server (would need to be built separately)
+# This is conceptual - in practice you'd use a minimal HTTP server binary
+# COPY --from=static-server-build /bin/httpd /bin/httpd
+
+EXPOSE 8080
+
+# Note: This requires a pre-built static HTTP server binary
+# ENTRYPOINT ["/bin/httpd"]
+
+# Alternative: Use caddy distroless for serving static files
+FROM gcr.io/distroless/static:nonroot AS frontend-secure
+COPY --from=frontend-build --chown=nonroot:nonroot /build/nextjs/out /var/www/html/
+COPY --from=frontend-build --chown=nonroot:nonroot /build/angular1/dist/frontend-angular1/ /var/www/html/user/
+COPY --from=frontend-build --chown=nonroot:nonroot /build/angular2/dist/frontend-angular2/ /var/www/html/admin/
+USER nonroot
+# This would require Caddy binary, showing concept of distroless approach

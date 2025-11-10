@@ -1,56 +1,99 @@
-# Multi-stage Docker setup for Session Multi-App
+# Multi-stage Docker setup with maximum security - Alternative approach
+# Uses scratch/distroless images for minimal attack surface
 
-# Backend - .NET API
-FROM mcr.microsoft.com/dotnet/aspnet:6.0 AS backend-runtime
-FROM mcr.microsoft.com/dotnet/sdk:6.0 AS backend-build
+# Backend build stage
+FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS backend-build
+
+# Security: Update packages and create user
+RUN apk update && apk upgrade --no-cache && \
+    addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+USER appuser
 WORKDIR /src
-COPY backend-dotnet/*.csproj ./
-RUN dotnet restore
-COPY backend-dotnet/ ./
-RUN dotnet publish -c Release -o /app
 
-# Frontend builds
-FROM node:20-alpine AS frontend-build
+# Copy and restore dependencies
+COPY --chown=appuser:appgroup backend-dotnet/*.csproj ./
+RUN dotnet restore --no-cache --locked-mode
+
+# Copy source and build for production
+COPY --chown=appuser:appgroup backend-dotnet/ ./
+RUN dotnet publish -c Release -o /app \
+    --no-restore \
+    --self-contained true \
+    --runtime linux-musl-x64 \
+    /p:PublishTrimmed=true \
+    /p:PublishSingleFile=true
+
+# Static file generation stage (no runtime needed)
+FROM node:20.12.2-alpine3.20 AS static-build
+
+# Security hardening
+RUN apk update && apk upgrade --no-cache && \
+    addgroup -g 1001 -S nodegroup && \
+    adduser -S nodeuser -u 1001 -G nodegroup
+
+USER nodeuser
 WORKDIR /app
 
-# Install pnpm globally
-RUN npm install -g pnpm@9
+# Install pnpm
+RUN npm install -g pnpm@9.12.0 --prefix /tmp/pnpm && \
+    ln -s /tmp/pnpm/bin/pnpm /usr/local/bin/pnpm
 
-# Next.js build
-COPY frontend-nextjs/package.json frontend-nextjs/pnpm-lock.yaml ./nextjs/
+# Build Next.js as static export
+COPY --chown=nodeuser:nodegroup frontend-nextjs/package.json frontend-nextjs/pnpm-lock.yaml ./nextjs/
 WORKDIR /app/nextjs
-RUN pnpm install
-COPY frontend-nextjs/ ./
-RUN pnpm build
+RUN pnpm install --frozen-lockfile --production=false --ignore-scripts
+COPY --chown=nodeuser:nodegroup frontend-nextjs/ ./
+RUN pnpm build && \
+    rm -rf node_modules .env* .git
 
-# Angular User App build
-WORKDIR /app/angular1
-COPY frontend-angular1/package.json frontend-angular1/pnpm-lock.yaml ./
-RUN pnpm install
-COPY frontend-angular1/ ./
-RUN pnpm ng build
+# Build Angular User App
+WORKDIR /app/angular1  
+COPY --chown=nodeuser:nodegroup frontend-angular1/package.json frontend-angular1/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --production=false --ignore-scripts
+COPY --chown=nodeuser:nodegroup frontend-angular1/ ./
+RUN pnpm ng build --configuration production --output-hashing=all && \
+    rm -rf node_modules .env* .git
 
-# Angular Admin App build
+# Build Angular Admin App
 WORKDIR /app/angular2
-COPY frontend-angular2/package.json frontend-angular2/pnpm-lock.yaml ./
-RUN pnpm install
-COPY frontend-angular2/ ./
-RUN pnpm ng build
+COPY --chown=nodeuser:nodegroup frontend-angular2/package.json frontend-angular2/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --production=false --ignore-scripts
+COPY --chown=nodeuser:nodegroup frontend-angular2/ ./
+RUN pnpm ng build --configuration production --output-hashing=all && \
+    rm -rf node_modules .env* .git
 
-# Final runtime stage
-FROM nginx:alpine AS frontend-runtime
+# Backend runtime - Distroless for ultimate security
+FROM gcr.io/distroless/dotnet:8 AS backend-runtime
 
-# Copy built frontends to nginx
-COPY --from=frontend-build /app/nextjs/out /usr/share/nginx/html/
-COPY --from=frontend-build /app/angular1/dist /usr/share/nginx/html/user
-COPY --from=frontend-build /app/angular2/dist /usr/share/nginx/html/admin
+# Copy only the self-contained executable
+COPY --from=backend-build /app/Backend /app/Backend
+COPY --from=backend-build /app/*.dll /app/
+COPY --from=backend-build /app/*.json /app/
 
-# Backend runtime
-FROM backend-runtime AS api-runtime
 WORKDIR /app
-COPY --from=backend-build /app .
 EXPOSE 5000
-ENTRYPOINT ["dotnet", "Backend.dll", "--urls", "http://*:5000"]
 
-# Production reverse proxy configuration would be added here
-# This Dockerfile demonstrates the build process for each component
+# Distroless doesn't have shell, so use exec form only
+ENTRYPOINT ["/app/Backend", "--urls", "http://*:5000"]
+
+# Static file server - Use minimal web server
+FROM busybox:1.36.1 AS frontend-runtime
+
+# Create non-root user
+RUN addgroup -g 1001 appgroup && \
+    adduser -D -u 1001 -G appgroup appuser
+
+# Copy static files
+COPY --from=static-build --chown=appuser:appgroup /app/nextjs/out /var/www/html/
+COPY --from=static-build --chown=appuser:appgroup /app/angular1/dist/frontend-angular1 /var/www/html/user/
+COPY --from=static-build --chown=appuser:appgroup /app/angular2/dist/frontend-angular2 /var/www/html/admin/
+
+USER appuser
+WORKDIR /var/www/html
+EXPOSE 8080
+
+# Simple HTTP server for static files
+ENTRYPOINT ["httpd"]
+CMD ["-f", "-v", "-p", "8080", "-h", "/var/www/html"]
