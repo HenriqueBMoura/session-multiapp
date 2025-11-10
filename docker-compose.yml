@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: .
+      target: api-runtime
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://*:5000
+    volumes:
+      - ./backend-dotnet:/app/src
+    networks:
+      - session-multiapp
+
+  # Development database (optional for future use)
+  database:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: sessiondb
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: devpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - session-multiapp
+
+  # Redis for session storage (optional for future use)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - session-multiapp
+
+  # Reverse proxy for production-like routing
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - session-multiapp
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  session-multiapp:
+    driver: bridge
+
+# Note: For development, it's recommended to run frontends locally
+# using the npm scripts for better development experience with hot reload

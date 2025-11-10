@@ -1,0 +1,37 @@
+{
+  "name": "session-multiapp-scripts",
+  "version": "1.0.0",
+  "description": "Development scripts for Session Multi-App project",
+  "scripts": {
+    "install:all": "pnpm run install:nextjs && pnpm run install:angular1 && pnpm run install:angular2",
+    "install:nextjs": "cd frontend-nextjs && pnpm install",
+    "install:angular1": "cd frontend-angular1 && pnpm install",
+    "install:angular2": "cd frontend-angular2 && pnpm install",
+    "dev:backend": "cd backend-dotnet && dotnet run --urls http://localhost:5000",
+    "dev:nextjs": "cd frontend-nextjs && pnpm dev",
+    "dev:angular1": "cd frontend-angular1 && pnpm ng serve --port 4200",
+    "dev:angular2": "cd frontend-angular2 && pnpm ng serve --port 4201",
+    "build:all": "pnpm run build:backend && pnpm run build:nextjs && pnpm run build:angular1 && pnpm run build:angular2",
+    "build:backend": "cd backend-dotnet && dotnet build",
+    "build:nextjs": "cd frontend-nextjs && pnpm build",
+    "build:angular1": "cd frontend-angular1 && pnpm ng build",
+    "build:angular2": "cd frontend-angular2 && pnpm ng build",
+    "clean": "pnpm run clean:backend && pnpm run clean:node",
+    "clean:backend": "cd backend-dotnet && rm -rf bin obj",
+    "clean:node": "rm -rf frontend-*/node_modules frontend-*/.next frontend-*/dist",
+    "lint:all": "pnpm run lint:nextjs && pnpm run lint:angular1 && pnpm run lint:angular2",
+    "lint:nextjs": "cd frontend-nextjs && pnpm lint",
+    "lint:angular1": "cd frontend-angular1 && pnpm ng lint",
+    "lint:angular2": "cd frontend-angular2 && pnpm ng lint",
+    "test:all": "pnpm run test:angular1 && pnpm run test:angular2",
+    "test:angular1": "cd frontend-angular1 && pnpm ng test --watch=false",
+    "test:angular2": "cd frontend-angular2 && pnpm ng test --watch=false"
+  },
+  "devDependencies": {
+    "pnpm": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

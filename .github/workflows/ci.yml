@@ -1,0 +1,189 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  NODE_VERSION: '20'
+  DOTNET_VERSION: '6.0'
+
+jobs:
+  # Backend .NET Tests and Build
+  backend:
+    runs-on: ubuntu-latest
+    name: Backend (.NET)
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Restore dependencies
+      run: dotnet restore backend-dotnet/
+    
+    - name: Build backend
+      run: dotnet build backend-dotnet/ --no-restore --configuration Release
+    
+    - name: Run backend tests
+      run: dotnet test backend-dotnet/ --no-build --configuration Release --verbosity normal
+
+  # Frontend Next.js
+  frontend-nextjs:
+    runs-on: ubuntu-latest
+    name: Frontend (Next.js)
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 9
+    
+    - name: Install dependencies
+      run: cd frontend-nextjs && pnpm install --frozen-lockfile
+    
+    - name: Lint Next.js
+      run: cd frontend-nextjs && pnpm lint
+    
+    - name: Build Next.js
+      run: cd frontend-nextjs && pnpm build
+
+  # Frontend Angular User App
+  frontend-angular1:
+    runs-on: ubuntu-latest
+    name: Frontend (Angular User)
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 9
+    
+    - name: Install dependencies
+      run: cd frontend-angular1 && pnpm install --frozen-lockfile
+    
+    - name: Lint Angular User App
+      run: cd frontend-angular1 && pnpm ng lint
+    
+    - name: Test Angular User App
+      run: cd frontend-angular1 && pnpm ng test --watch=false --browsers=ChromeHeadless
+    
+    - name: Build Angular User App
+      run: cd frontend-angular1 && pnpm ng build
+
+  # Frontend Angular Admin App
+  frontend-angular2:
+    runs-on: ubuntu-latest
+    name: Frontend (Angular Admin)
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 9
+    
+    - name: Install dependencies
+      run: cd frontend-angular2 && pnpm install --frozen-lockfile
+    
+    - name: Lint Angular Admin App
+      run: cd frontend-angular2 && pnpm ng lint
+    
+    - name: Test Angular Admin App
+      run: cd frontend-angular2 && pnpm ng test --watch=false --browsers=ChromeHeadless
+    
+    - name: Build Angular Admin App
+      run: cd frontend-angular2 && pnpm ng build
+
+  # Integration Test
+  integration:
+    runs-on: ubuntu-latest
+    name: Integration Tests
+    needs: [backend, frontend-nextjs, frontend-angular1, frontend-angular2]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 9
+    
+    - name: Start backend
+      run: |
+        cd backend-dotnet
+        dotnet run --urls http://localhost:5000 &
+        sleep 10
+    
+    - name: Install frontend dependencies
+      run: |
+        cd frontend-nextjs && pnpm install --frozen-lockfile
+        cd ../frontend-angular1 && pnpm install --frozen-lockfile
+        cd ../frontend-angular2 && pnpm install --frozen-lockfile
+    
+    - name: Build frontends
+      run: |
+        cd frontend-nextjs && pnpm build
+        cd ../frontend-angular1 && pnpm ng build
+        cd ../frontend-angular2 && pnpm ng build
+    
+    - name: Health check
+      run: |
+        curl -f http://localhost:5000/health || exit 1
+
+  # Security Scan
+  security:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'

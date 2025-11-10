@@ -1,0 +1,42 @@
+{
+  "folders": [
+    {
+      "path": "./backend-dotnet"
+    },
+    {
+      "path": "./frontend-nextjs"
+    },
+    {
+      "path": "./frontend-angular1"
+    },
+    {
+      "path": "./frontend-angular2"
+    }
+  ],
+  "settings": {
+    "typescript.preferences.importModuleSpecifier": "relative",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "files.associations": {
+      "*.json": "jsonc"
+    },
+    "eslint.workingDirectories": [
+      "./frontend-nextjs",
+      "./frontend-angular1",
+      "./frontend-angular2"
+    ]
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-dotnettools.csharp",
+      "angular.ng-template",
+      "bradlc.vscode-tailwindcss",
+      "esbenp.prettier-vscode",
+      "dbaeumer.vscode-eslint",
+      "ms-vscode.vscode-typescript-next"
+    ]
+  }
+}
