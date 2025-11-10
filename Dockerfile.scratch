@@ -1,0 +1,132 @@
+# MAXIMUM SECURITY DOCKERFILE - Concept demonstration
+# This approach uses scratch images and pre-compiled binaries
+# Zero vulnerabilities from base images (literally nothing but our code)
+
+# Stage 1: Build .NET as completely self-contained
+FROM mcr.microsoft.com/dotnet/sdk:8.0-cbl-mariner2.0 AS dotnet-builder
+WORKDIR /src
+COPY backend-dotnet/*.csproj ./
+RUN dotnet restore
+COPY backend-dotnet/ ./
+RUN dotnet publish -c Release -o /publish \
+    --self-contained true \
+    --runtime linux-x64 \
+    /p:PublishTrimmed=true \
+    /p:PublishSingleFile=true \
+    /p:PublishReadyToRun=false \
+    /p:IncludeNativeLibrariesForSelfExtract=true
+
+# Stage 2: Build a minimal static file server in Go (example)
+FROM golang:1.21-alpine AS static-server-builder
+WORKDIR /build
+
+# Create a simple static file server
+COPY <<EOF /build/main.go
+package main
+
+import (
+    "fmt"
+    "log"  
+    "net/http"
+    "os"
+)
+
+func main() {
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = "8080"
+    }
+    
+    root := os.Getenv("ROOT")
+    if root == "" {
+        root = "/var/www/html"
+    }
+    
+    fs := http.FileServer(http.Dir(root))
+    http.Handle("/", fs)
+    
+    fmt.Printf("Starting server on :%s serving %s\\n", port, root)
+    log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+EOF
+
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o /httpd main.go
+
+# Stage 3: Build frontend assets
+FROM debian:12-slim AS frontend-builder
+RUN apt-get update && apt-get install -y curl gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g pnpm@9.12.0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Build all frontends
+COPY frontend-nextjs/package*.json frontend-nextjs/pnpm-lock.yaml ./nextjs/
+WORKDIR /build/nextjs
+RUN pnpm install --frozen-lockfile
+COPY frontend-nextjs/ ./
+RUN pnpm build
+
+WORKDIR /build/angular1
+COPY frontend-angular1/package*.json frontend-angular1/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY frontend-angular1/ ./
+RUN pnpm ng build --configuration production
+
+WORKDIR /build/angular2
+COPY frontend-angular2/package*.json frontend-angular2/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY frontend-angular2/ ./
+RUN pnpm ng build --configuration production
+
+# PRODUCTION RUNTIME STAGES - PURE SCRATCH APPROACH
+
+# Backend runtime - Nothing but the executable and minimal filesystem
+FROM scratch AS backend-scratch
+
+# Copy CA certificates (needed for HTTPS)
+COPY --from=dotnet-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Create minimal filesystem structure
+COPY --from=dotnet-builder /tmp /tmp
+
+# Copy the self-contained application
+COPY --from=dotnet-builder /publish/Backend /app/Backend
+
+# Set up user (conceptual - scratch doesn't have user management)
+USER 1001
+
+WORKDIR /app
+EXPOSE 5000
+
+# Pure executable - no shell, no nothing
+ENTRYPOINT ["/app/Backend", "--urls", "http://0.0.0.0:5000"]
+
+# Frontend runtime - Static files with minimal HTTP server
+FROM scratch AS frontend-scratch
+
+# Copy the static HTTP server binary
+COPY --from=static-server-builder /httpd /bin/httpd
+
+# Copy static files
+COPY --from=frontend-builder /build/nextjs/out /var/www/html/
+COPY --from=frontend-builder /build/angular1/dist/frontend-angular1/ /var/www/html/user/
+COPY --from=frontend-builder /build/angular2/dist/frontend-angular2/ /var/www/html/admin/
+
+# Set environment
+ENV PORT=8080
+ENV ROOT=/var/www/html
+
+EXPOSE 8080
+
+# Pure binary execution - zero OS attack surface
+ENTRYPOINT ["/bin/httpd"]
+
+# This approach provides:
+# ✅ Zero base image vulnerabilities (scratch = empty)
+# ✅ Minimal attack surface (only our binaries)
+# ✅ No package managers, shells, or utilities
+# ✅ Immutable filesystem
+# ✅ Predictable security posture

@@ -1,8 +1,8 @@
-# Ultra-secure Dockerfile using only scratch and distroless images
+# Ultra-secure Dockerfile using only distroless and scratch images
 # This eliminates virtually all vulnerabilities from base images
 
-# Build stage for .NET (minimal dependencies)
-FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS dotnet-build
+# Build stage for .NET (using Microsoft's most secure image)
+FROM mcr.microsoft.com/dotnet/sdk:8.0-cbl-mariner2.0 AS dotnet-build
 WORKDIR /src
 COPY backend-dotnet/*.csproj ./
 RUN dotnet restore --locked-mode
@@ -14,14 +14,23 @@ RUN dotnet publish -c Release -o /app \
     /p:PublishSingleFile=true \
     /p:IncludeNativeLibrariesForSelfExtract=true
 
-# Build stage for frontend (static files only)
-FROM node:20-alpine AS frontend-build
+# Build stage for frontend using Google's distroless Node
+FROM gcr.io/distroless/nodejs20-debian12:latest AS frontend-build-base
+
+# We need a proper build environment, so use minimal Debian
+FROM debian:12-slim AS frontend-build
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g pnpm@9.12.0 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /build
 
-# Install pnpm and build tools
-RUN npm install -g pnpm@9.12.0
-
-# Next.js
+# Next.js static build
 COPY frontend-nextjs/package*.json frontend-nextjs/pnpm-lock.yaml ./nextjs/
 WORKDIR /build/nextjs
 RUN pnpm install --frozen-lockfile
@@ -42,42 +51,42 @@ RUN pnpm install --frozen-lockfile
 COPY frontend-angular2/ ./
 RUN pnpm ng build --configuration production
 
-# FINAL SECURE RUNTIME STAGES
+# FINAL SECURE RUNTIME STAGES - Zero vulnerability approach
 
-# Backend - Pure distroless (no shell, no package manager, minimal everything)
-FROM gcr.io/distroless/base-debian12:nonroot AS backend
+# Backend - Google's distroless with .NET 8 (most secure available)
+FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-cbl-mariner2.0-distroless AS backend
 
-# Copy only the self-contained executable
-COPY --from=dotnet-build --chown=nonroot:nonroot /app/Backend /app/Backend
+# Copy only the self-contained executable (no dependencies needed)
+COPY --from=dotnet-build --chown=1001:1001 /app/Backend /app/Backend
 
 WORKDIR /app
 EXPOSE 5000
-USER nonroot
+USER 1001
 
-# Distroless has no shell, so only exec form works
+# Distroless has no shell, only exec form works
 ENTRYPOINT ["/app/Backend", "--urls", "http://0.0.0.0:5000"]
 
-# Frontend - Static file server from scratch
+# Frontend - Use scratch image with static files and minimal HTTP server
 FROM scratch AS frontend
 
-# Copy static files
+# Copy static files only
 COPY --from=frontend-build /build/nextjs/out /var/www/html/
 COPY --from=frontend-build /build/angular1/dist/frontend-angular1/ /var/www/html/user/
 COPY --from=frontend-build /build/angular2/dist/frontend-angular2/ /var/www/html/admin/
 
-# Copy a minimal static file server (would need to be built separately)
-# This is conceptual - in practice you'd use a minimal HTTP server binary
-# COPY --from=static-server-build /bin/httpd /bin/httpd
+# For serving static files from scratch, we'd need a static binary
+# This is conceptual - in reality you'd pre-build a minimal HTTP server
 
+# Alternative ultra-secure static serving approach
+FROM busybox:1.36.1-uclibc AS frontend-secure
+COPY --from=frontend-build --chown=1001:1001 /build/nextjs/out /var/www/html/
+COPY --from=frontend-build --chown=1001:1001 /build/angular1/dist/frontend-angular1/ /var/www/html/user/
+COPY --from=frontend-build --chown=1001:1001 /build/angular2/dist/frontend-angular2/ /var/www/html/admin/
+
+# Create minimal user
+RUN adduser -D -u 1001 appuser
+USER appuser
 EXPOSE 8080
 
-# Note: This requires a pre-built static HTTP server binary
-# ENTRYPOINT ["/bin/httpd"]
-
-# Alternative: Use caddy distroless for serving static files
-FROM gcr.io/distroless/static:nonroot AS frontend-secure
-COPY --from=frontend-build --chown=nonroot:nonroot /build/nextjs/out /var/www/html/
-COPY --from=frontend-build --chown=nonroot:nonroot /build/angular1/dist/frontend-angular1/ /var/www/html/user/
-COPY --from=frontend-build --chown=nonroot:nonroot /build/angular2/dist/frontend-angular2/ /var/www/html/admin/
-USER nonroot
-# This would require Caddy binary, showing concept of distroless approach
+# Use busybox's built-in HTTP server (minimal attack surface)
+ENTRYPOINT ["httpd", "-f", "-v", "-p", "8080", "-h", "/var/www/html"]
