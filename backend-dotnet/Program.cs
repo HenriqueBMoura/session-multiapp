@@ -40,6 +40,13 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Health check endpoint
+app.MapGet("/health", () => Results.Ok(new { 
+    status = "healthy", 
+    timestamp = DateTime.UtcNow,
+    version = "1.0.0"
+}));
+
 // Login "user" (Next.js)
 app.MapPost("/login", async (HttpContext ctx) =>
 {
