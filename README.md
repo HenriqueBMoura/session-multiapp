@@ -32,14 +32,14 @@ session-multiapp/
 └── session-multiapp.code-workspace  # VS Code configuration
 ```
 
-## Quick Start
+## Quick Start (Local Development)
 
 ### Option 1: Using Development Scripts (Recommended)
 ```bash
 # Install dependencies for all frontends
 pnpm run install:all
 
-# Start all applications (requires 4 terminals)
+# Start all applications (4 terminals recommended)
 pnpm run dev:backend     # Terminal 1 - Backend on :5000
 pnpm run dev:nextjs      # Terminal 2 - Next.js on :3000  
 pnpm run dev:angular1    # Terminal 3 - Angular User on :4200
@@ -60,7 +60,7 @@ docker-compose logs -f
 2. Install recommended extensions
 3. Use integrated terminals for each project
 
-## 1. Running the Project Locally
+## 1. Local Development Details
 
 **Requirements**: Node 20+, pnpm 9+, .NET 6 SDK, Angular CLI 18
 
@@ -132,6 +132,17 @@ pnpm dev
 - `/` → main hub with "Resume Application" button
 - Navigation → redirects to Angular User App
 
+**Application Entry Point**
+
+During local development, the Next.js application acts as the main entry point.
+From the hub (`http://localhost:3000`), users can navigate to:
+
+- **User App** (`http://localhost:4200`)
+- **Admin App** (`http://localhost:4201`)
+
+This mirrors the production setup, where `/user` and `/admin` are routed
+under the same domain via a reverse proxy.
+
 ### 1.3 Angular User App — http://localhost:4200
 
 ```bash
@@ -164,9 +175,9 @@ pnpm ng serve --port 4201
 
 > Both Angular apps use an HTTP interceptor to automatically send cookies (`withCredentials`).
 
-## 2. Testing the Required Flows
+## 2. Application Flows
 
-### ✅ Flow A — Next.js → Angular User
+### User Journey - Next.js → Angular User
 
 1. Open `http://localhost:3000/login`
 2. Click **Login** → session cookie created
@@ -178,7 +189,7 @@ pnpm ng serve --port 4201
 Welcome, Henrique (role: user)
 ```
 
-### ✅ Flow B — Angular Admin → Angular User
+### Admin Journey - Angular Admin → Angular User
 
 1. Open `http://localhost:4201`
 2. Click **Admin Login** → admin session created
@@ -230,16 +241,16 @@ docker-compose down
 
 ### CI/CD Pipeline
 GitHub Actions workflow includes:
-- ✅ Automated builds for all components
-- ✅ Security vulnerability scanning
-- ✅ Integration testing
-- ✅ Multi-platform support
+- Automated builds for all components
+- Security vulnerability scanning
+- Integration testing
+- Multi-platform support
 
 ## 5. Production Considerations (Azure + Cloudflare)
 
 Although this implementation is simplified for the assignment, the structure aligns with real-world production setups.
 
-### ✅ Same-Domain Architecture
+### Same-Domain Architecture
 
 Recommended final routing under a single domain:
 
@@ -250,7 +261,7 @@ Recommended final routing under a single domain:
 
 This allows safe usage of `SameSite=Lax` cookies.
 
-### ✅ Cookie Security
+### Cookie Security
 
 For production:
 
@@ -258,7 +269,7 @@ For production:
 - Consider `Domain=.yourdomain.com` if using subdomains
 - Switch to `SameSite=None; Secure` if cross-site navigation is required
 
-### ✅ Cloudflare / Reverse Proxy Notes
+### Cloudflare / Reverse Proxy Notes
 
 Ensure:
 
@@ -266,7 +277,7 @@ Ensure:
 - HTTPS termination preserves cookie attributes
 - Correct forwarding of `Host`, `Origin`, and credential headers
 
-### ⚠️ CSRF
+### CSRF
 
 Not implemented here (not required for this test).
 
@@ -289,9 +300,6 @@ kubectl apply -f k8s/
 
 ## 7. Development Workflow
 
-```bash
-## 7. Development Workflow
-
 ### Using Unified Scripts
 ```bash
 # Start development (4 terminals recommended)
@@ -312,9 +320,6 @@ docker-compose up
 2. Install recommended extensions
 3. Use integrated terminal panels
 4. Enjoy unified development experience
-
-## 8. Key Features
-```
 
 ## 8. Key Features
 
@@ -386,11 +391,9 @@ Educational/demo usage for recruitment purposes.
 
 ---
 
-## 🚀 Quick Links
+## Quick Links
 
 - **Repository**: [session-multiapp](https://github.com/HenriqueBMoura/session-multiapp)
 - **Live Demo**: *Coming soon*
 - **Issues**: [Report bugs](https://github.com/HenriqueBMoura/session-multiapp/issues)
 - **Discussions**: [Community discussions](https://github.com/HenriqueBMoura/session-multiapp/discussions)
-
-Built with ❤️ for demonstrating modern micro-frontend architecture patterns.
