@@ -4,6 +4,8 @@ This project demonstrates **session-based authentication and cross-application n
 
 All applications rely on a **single session cookie**, allowing seamless transitions between the apps under the same domain.
 
+Although this project runs locally using multiple ports, the architecture and navigation patterns demonstrated here map directly to production setups using a single domain with reverse proxy routing (for example `/`, `/user`, `/admin`, and `/api`).
+
 [![CI/CD Pipeline](https://github.com/HenriqueBMoura/session-multiapp/actions/workflows/ci.yml/badge.svg)](https://github.com/HenriqueBMoura/session-multiapp/actions/workflows/ci.yml)
 
 ## Tech Stack & Versions
@@ -31,6 +33,14 @@ session-multiapp/
 ├── package.json             # Unified development scripts
 └── session-multiapp.code-workspace  # VS Code configuration
 ```
+## Application Documentation
+
+Each application has its own focused README with implementation details:
+
+- **Next.js Hub:** `frontend-nextjs/README.md`
+- **Angular User App:** `frontend-angular1/README.md`
+- **Angular Admin App:** `frontend-angular2/README.md`
+- **Backend API:** `backend-dotnet/README.md`
 
 ## Quick Start (Local Development)
 
@@ -134,14 +144,13 @@ pnpm dev
 
 **Application Entry Point**
 
-During local development, the Next.js application acts as the main entry point.
-From the hub (`http://localhost:3000`), users can navigate to:
+During local development, the Next.js application acts as the main entry point (Hub).
+
+From `http://localhost:3000`, users can authenticate and navigate to the User and Admin applications without manually typing ports, mirroring a production gateway/shell setup.
 
 - **User App** (`http://localhost:4200`)
 - **Admin App** (`http://localhost:4201`)
 
-This mirrors the production setup, where `/user` and `/admin` are routed
-under the same domain via a reverse proxy.
 
 ### 1.3 Angular User App — http://localhost:4200
 
@@ -177,7 +186,7 @@ pnpm ng serve --port 4201
 
 ## 2. Application Flows
 
-### User Journey - Next.js → Angular User
+### User Journey (Hub → User App)
 
 1. Open `http://localhost:3000/login`
 2. Click **Login** → session cookie created
@@ -189,7 +198,7 @@ pnpm ng serve --port 4201
 Welcome, Henrique (role: user)
 ```
 
-### Admin Journey - Angular Admin → Angular User
+### Admin Journey (Admin App → User App)
 
 1. Open `http://localhost:4201`
 2. Click **Admin Login** → admin session created
@@ -385,11 +394,14 @@ See [SECURITY.md](SECURITY.md) for information about reporting security vulnerab
 
 ## 13. License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## 13. License
 
-Educational/demo usage for recruitment purposes.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ---
+
+This repository is intended to demonstrate real-world frontend orchestration patterns, session sharing, and cross-application navigation in a controlled local environment.
+
 
 ## Quick Links
 
